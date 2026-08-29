@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'models/source_item.dart';
-import 'pages/detail_page.dart';
-import 'pages/my_publishes_page.dart';
 import 'pages/profile_page.dart';
 import 'pages/publish_page.dart';
 import 'pages/source_list_page.dart';
@@ -188,14 +186,5 @@ class _AppSwitcher extends StatelessWidget {
             .toList(),
       ),
     );
-  }
-}
-
-/// 占位:保留 collection_page / rss_page 编译通过,但 main.dart 不再引用它们。
-/// (可后续按需删除)
-class Placeholder {
-  static void keep() {
-    // ignore: unused_element
-    void _p() {}
   }
 }
