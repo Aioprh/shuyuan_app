@@ -1,7 +1,7 @@
 /// 站点的 App 板块:一个板块对应一款阅读/影视 App 的资源分区。
 /// URL 前缀都是 `$baseHost/${path}/...`,详见 ApiService。
 enum SrcApp {
-  yuedu('yuedu', '开源阅读 (Legado)'),
+  yuedu('yuedu', '开源阅读'),
   legadotauri('legadotauri', 'Legado-Tauri'),
   qysg('qysg', '轻悦时光'),
   yiciyuan('yiciyuan', '异次元'),
@@ -24,36 +24,39 @@ enum SrcModule {
   ttss('ttss', 'TTS 合集'),
   tuyuan('tuyuan', '图源'),
   tuyuans('tuyuans', '图源合集'),
-  yuan('yuan', '图源(猫番)'),
-  yuans('yuans', '图源合集(猫番)');
+  yuan('yuan', '图源'),
+  yuans('yuans', '图源合集');
 
   final String path;
   final String label;
   const SrcModule(this.path, this.label);
+
+  /// 是否属于「源类」(单数) 还是 「合集类」(复数)
+  bool get isCollection =>
+      path.endsWith('s') || path == 'ttss' || path == 'yuans';
 }
 
-/// 各 App 下可用的「主板块」列表(底部导航 4 个 tab 对应的模块)。
-/// 顺序即为 tab 顺序:书源 / 合集 / 补充1 / 补充2 / (新建 / 我的 在主框架)
-final Map<SrcApp, List<SrcModule>> kAppTabs = {
-  SrcApp.yuedu:      [SrcModule.shuyuan, SrcModule.shuyuans, SrcModule.rss,   SrcModule.rsss],
-  SrcApp.legadotauri:[SrcModule.shuyuan, SrcModule.shuyuans, SrcModule.shuyuan, SrcModule.shuyuan],
-  SrcApp.qysg:       [SrcModule.shuyuan, SrcModule.shuyuans, SrcModule.tts,   SrcModule.ttss],
-  SrcApp.yiciyuan:   [SrcModule.tuyuan,  SrcModule.tuyuans,  SrcModule.tuyuan, SrcModule.tuyuan],
-  SrcApp.maofan:     [SrcModule.yuan,    SrcModule.yuans,    SrcModule.yuan,   SrcModule.yuan],
+/// 每个 App 下有哪些 源类 模块(底部 nav 的第一个 tab 内部 TabBar 切换)
+final Map<SrcApp, List<SrcModule>> kAppSources = {
+  SrcApp.yuedu:       [SrcModule.shuyuan, SrcModule.rss],
+  SrcApp.legadotauri: [SrcModule.shuyuan],
+  SrcApp.qysg:        [SrcModule.shuyuan, SrcModule.tts],
+  SrcApp.yiciyuan:    [SrcModule.tuyuan],
+  SrcApp.maofan:      [SrcModule.yuan],
 };
 
-/// tab 文案:固定 4 个位置,对某些 App 后半两个 tab 可能没资源,此时隐藏。
-const List<String> kTabLabels = ['书源', '合集', '补充 1', '补充 2'];
+/// 每个 App 下有哪些 合集类 模块(底部 nav 的第二个 tab 内部 TabBar 切换)
+final Map<SrcApp, List<SrcModule>> kAppCollections = {
+  SrcApp.yuedu:       [SrcModule.shuyuans, SrcModule.rsss],
+  SrcApp.legadotauri: [SrcModule.shuyuans],
+  SrcApp.qysg:        [SrcModule.shuyuans, SrcModule.ttss],
+  SrcApp.yiciyuan:    [SrcModule.tuyuans],
+  SrcApp.maofan:      [SrcModule.yuans],
+};
 
-/// 哪些 App 有订阅源 / TTS / 图源 等特殊模块,用于在 UI 里动态切换 tab 文案。
-String tabLabelFor(SrcApp app, int index) {
-  if (index == 0) return '书源';
-  if (index == 1) return '合集';
-  final mods = kAppTabs[app]!;
-  if (mods[index].label.contains('TTS')) return mods[index].label;
-  if (mods[index].label.contains('订阅')) return mods[index].label;
-  if (mods[index].label.contains('图源')) return mods[index].label;
-  return mods[index].label;
+/// 每个 App 下所有可用模块(源类 + 合集类),用于发布页选择
+List<SrcModule> allModulesFor(SrcApp app) {
+  return [...kAppSources[app]!, ...kAppCollections[app]!];
 }
 
 /// 通用条目:列表页 `div.ylist` 卡片解析出的统一对象。

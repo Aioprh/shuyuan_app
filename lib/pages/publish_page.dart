@@ -36,15 +36,15 @@ class _PublishPageState extends State<PublishPage> {
   void _setApp(SrcApp a) {
     setState(() {
       _app = a;
-      _module = kAppTabs[a]!.first;
+      _module = kAppSources[a]!.first;
     });
   }
 
-  /// 当前 App 下可用的资源模块(去重)
+  /// 当前 App 下可用的资源模块(去重,源类优先)
   List<SrcModule> get _availableModules {
     final seen = <SrcModule>{};
     final list = <SrcModule>[];
-    for (final m in kAppTabs[_app]!) {
+    for (final m in allModulesFor(_app)) {
       if (seen.add(m)) list.add(m);
     }
     return list;

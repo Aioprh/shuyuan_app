@@ -12,11 +12,15 @@ class SourceListPage extends StatefulWidget {
   final SrcApp app;
   final SrcModule module;
   final bool enableBatch;
+
+  /// 是否嵌入到上层 Tab 容器(嵌入时不显示自己的 AppBar,避免重复)
+  final bool embedded;
   const SourceListPage({
     super.key,
     this.app = SrcApp.yuedu,
     required this.module,
     this.enableBatch = false,
+    this.embedded = true,
   });
 
   @override
@@ -63,69 +67,6 @@ class _SourceListPageState extends State<SourceListPage> {
   AppBar _buildAppBar(BuildContext context) {
     return AppBar(
       title: Text(widget.module.label),
-      actions: [
-        if (widget.enableBatch)
-          IconButton(
-            tooltip: _batchMode
-                ? '取消多选'
-                : '批量导出(勾选后导出 JSON)',
-            onPressed: () {
-              setState(() {
-                _batchMode = !_batchMode;
-                _selected.clear();
-              });
-            },
-            icon: Icon(_batchMode ? Icons.close : Icons.library_add_check),
-          ),
-        if (_batchMode)
-          TextButton(
-            onPressed: _selected.isEmpty ? null : _exportSelected,
-            child: Text('导出(${_selected.length})'),
-          ),
-      ],
-      bottom: _batchMode
-          ? PreferredSize(
-              preferredSize: const Size.fromHeight(0),
-              child: const SizedBox.shrink(),
-            )
-          : PreferredSize(
-              preferredSize: const Size.fromHeight(60),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                child: TextField(
-                  controller: _searchCtrl,
-                  onChanged: (_) {
-                    setState(_applyFilter);
-                    _maybeAutoSearch();
-                  },
-                  decoration: InputDecoration(
-                    hintText: '搜索标题 / 作者 / 标签',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchCtrl.text.isEmpty
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              setState(() {
-                                _searchKw = '';
-                                _searchedPages = 0;
-                                _applyFilter();
-                              });
-                            },
-                          ),
-                    filled: true,
-                    fillColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
-                    ),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                  ),
-                ),
-              ),
-            ),
     );
   }
 
@@ -263,13 +204,37 @@ class _SourceListPageState extends State<SourceListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final body = Column(
+      children: [
+        _buildSearchBar(),
+        Expanded(child: _buildScrollBody()),
+      ],
+    );
+    if (widget.embedded) {
+      // 嵌入模式:用 Stack 叠加刷新 FAB,避免父级布局冲突
+      return Stack(
+        children: [
+          body,
+          if (_all.isNotEmpty && !_batchMode)
+            Positioned(
+              right: 16,
+              bottom: 20,
+              child: FloatingActionButton(
+                heroTag: 'refresh-embedded-${widget.module.path}',
+                onPressed: _loadFirst,
+                child: const Icon(Icons.refresh),
+              ),
+            ),
+        ],
+      );
+    }
     return Scaffold(
       appBar: _buildAppBar(context),
-      body: _buildBody(),
+      body: body,
       floatingActionButton: _all.isEmpty || _batchMode
           ? null
           : FloatingActionButton.extended(
-              heroTag: 'refresh${widget.module.path}',
+              heroTag: 'refresh-${widget.module.path}',
               onPressed: _loadFirst,
               icon: const Icon(Icons.refresh),
               label: const Text('刷新'),
@@ -277,16 +242,85 @@ class _SourceListPageState extends State<SourceListPage> {
     );
   }
 
-  Widget _buildBody() {
+  /// 独立搜索栏(所有模式复用)
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: (_) {
+                setState(_applyFilter);
+                _maybeAutoSearch();
+              },
+              decoration: InputDecoration(
+                hintText: '搜索标题 / 作者 / 标签',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _searchCtrl.text.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() {
+                            _searchKw = '';
+                            _searchedPages = 0;
+                            _applyFilter();
+                          });
+                        },
+                      ),
+                filled: true,
+                fillColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide.none,
+                ),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              ),
+            ),
+          ),
+          if (_batchMode)
+            IconButton(
+              tooltip: '取消多选',
+              onPressed: () => setState(() {
+                _batchMode = false;
+                _selected.clear();
+              }),
+              icon: const Icon(Icons.close),
+            )
+          else if (widget.enableBatch)
+            IconButton(
+              tooltip: '批量导出',
+              onPressed: () => setState(() {
+                _batchMode = !_batchMode;
+                _selected.clear();
+              }),
+              icon: Icon(_batchMode
+                  ? Icons.library_add_check
+                  : Icons.check_circle_outline),
+            ),
+          if (_batchMode)
+            TextButton(
+              onPressed: _selected.isEmpty ? null : _exportSelected,
+              child: Text('导出(${_selected.length})'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScrollBody() {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_filtered.isEmpty) {
-      // 搜索中结果暂空:展示自动翻页进度,别误报"无结果"
       if (_searchLoading) {
         return ListView(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
           children: const [
-            SizedBox(height: 200),
+            SizedBox(height: 160),
             Center(child: SearchProgressHint()),
           ],
         );
@@ -296,7 +330,7 @@ class _SourceListPageState extends State<SourceListPage> {
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: const [
-            SizedBox(height: 120),
+            SizedBox(height: 80),
             Center(child: Text('没有匹配的内容,下拉刷新')),
           ],
         ),

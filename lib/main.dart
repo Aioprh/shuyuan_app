@@ -48,7 +48,12 @@ IconData iconFor(SrcApp app) {
   }
 }
 
-/// 底部导航主框架:顶部 App 切换 + 书源 / 合集 / 附加 / 新建 / 我的
+/// 底部导航主框架:固定 4 个 tab,索引与 IndexedStack 严格对应。
+///   0 -> 资源(源类,内部 TabBar 切换)
+///   1 -> 合集(合集类,内部 TabBar 切换)
+///   2 -> 新建 / 发布
+///   3 -> 我的
+/// 资源/合集 tab 各自用 TabBar 展示当前 App 下可用的子模块(如订阅源、TTS、图源)。
 class RootShell extends StatefulWidget {
   const RootShell({super.key});
 
@@ -58,81 +63,67 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   SrcApp _app = SrcApp.yuedu;
-  int _index = 0;
+  int _navIndex = 0;
 
   @override
   Widget build(BuildContext context) {
-    final tabs = kAppTabs[_app]!;
-
-    // 构造 4 个资源 tab 的页面,enableBatch 仅对「书源」模块开启
-    final resourcePages = <Widget>[
-      SourceListPage(
-          app: _app, module: tabs[0], enableBatch: true),
-      SourceListPage(app: _app, module: tabs[1]),
-      SourceListPage(app: _app, module: tabs[2]),
-      SourceListPage(app: _app, module: tabs[3]),
-    ];
-
-    // 顶部 AppBar 的标题(显示当前模块)
-    final currentLabel = tabLabelFor(_app, _index);
+    // 关键:用 ValueKey 让 app 变化时强制重建前两个页面,解决切换不刷新
+    final sourcesPage = _MultiModulePage(
+      key: ValueKey('sources-${_app.name}'),
+      app: _app,
+      modules: kAppSources[_app]!,
+      enableBatchFirst: true,
+    );
+    final collectionsPage = _MultiModulePage(
+      key: ValueKey('collections-${_app.name}'),
+      app: _app,
+      modules: kAppCollections[_app]!,
+    );
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(currentLabel),
+        title: Text(_currentTitle()),
         actions: [
           _AppSwitcher(
             current: _app,
             onChanged: (a) {
               setState(() {
                 _app = a;
-                _index = 0; // 切 App 时回到「书源」tab
+                _navIndex = 0; // 切 App 时回到「资源」tab
               });
             },
           ),
         ],
       ),
       body: IndexedStack(
-        index: _index,
+        index: _navIndex,
         children: [
-          ...resourcePages,
-          const PublishPage(),
-          const ProfilePage(),
+          sourcesPage,      // index 0
+          collectionsPage,  // index 1
+          const PublishPage(), // index 2
+          const ProfilePage(), // index 3
         ],
       ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: [
+        selectedIndex: _navIndex,
+        onDestinationSelected: (i) => setState(() => _navIndex = i),
+        destinations: const [
           NavigationDestination(
-            icon: const Icon(Icons.book_outlined),
-            selectedIcon: const Icon(Icons.book),
-            label: tabLabelFor(_app, 0),
+            icon: Icon(Icons.book_outlined),
+            selectedIcon: Icon(Icons.book),
+            label: '资源',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.collections_bookmark_outlined),
-            selectedIcon: const Icon(Icons.collections_bookmark),
-            label: tabLabelFor(_app, 1),
+            icon: Icon(Icons.collections_bookmark_outlined),
+            selectedIcon: Icon(Icons.collections_bookmark),
+            label: '合集',
           ),
-          // 某些 App 有 4 个资源模块,某些只有 2 个。此处对「补充 tab」
-          // 做条件显示:如果和上一个模块是同路径(占位重复),就仍然放着但文案显示为空。
-          if (_hasExtraTab(_app, 2))
-            NavigationDestination(
-              icon: const Icon(Icons.tune_outlined),
-              selectedIcon: const Icon(Icons.tune),
-              label: tabLabelFor(_app, 2),
-            ),
-          if (_hasExtraTab(_app, 3))
-            NavigationDestination(
-              icon: const Icon(Icons.format_list_bulleted_add),
-              selectedIcon: const Icon(Icons.format_list_bulleted_add),
-              label: tabLabelFor(_app, 3),
-            ),
-          const NavigationDestination(
+          NavigationDestination(
             icon: Icon(Icons.add_box_outlined),
             selectedIcon: Icon(Icons.add_box),
             label: '新建',
           ),
-          const NavigationDestination(
+          NavigationDestination(
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
             label: '我的',
@@ -142,13 +133,64 @@ class _RootShellState extends State<RootShell> {
     );
   }
 
-  bool _hasExtraTab(SrcApp app, int index) {
-    final tabs = kAppTabs[app]!;
-    if (index >= tabs.length) return false;
-    // 同一个 module 被重复用作占位(如 legadotauri 只有 shuyuan,tab2/3 也是 shuyuan),
-    // 就不再显示额外 tab
-    final prev = index >= 2 ? tabs[1] : tabs[0];
-    return tabs[index] != prev;
+  String _currentTitle() {
+    switch (_navIndex) {
+      case 0:
+        return _app.label;
+      case 1:
+        return '合集';
+      case 2:
+        return '新建 / 发布';
+      case 3:
+        return '我的';
+    }
+    return '';
+  }
+}
+
+/// 多子模块容器:AppBar 下方一个 TabBar,每个 tab 是一个 SourceListPage。
+/// 当只有一个子模块时,不显示 TabBar(简洁美观)。
+class _MultiModulePage extends StatefulWidget {
+  final SrcApp app;
+  final List<SrcModule> modules;
+  final bool enableBatchFirst;
+  const _MultiModulePage({
+    super.key,
+    required this.app,
+    required this.modules,
+    this.enableBatchFirst = false,
+  });
+
+  @override
+  State<_MultiModulePage> createState() => _MultiModulePageState();
+}
+
+class _MultiModulePageState extends State<_MultiModulePage> {
+  @override
+  Widget build(BuildContext context) {
+    final hasMultiple = widget.modules.length > 1;
+    final tabs = widget.modules.map((m) => Tab(text: m.label)).toList();
+    final pages = widget.modules.asMap().entries.map((e) {
+      final idx = e.key;
+      final m = e.value;
+      return SourceListPage(
+        key: ValueKey('${widget.app.name}-${m.path}'),
+        app: widget.app,
+        module: m,
+        enableBatch: idx == 0 && widget.enableBatchFirst,
+      );
+    }).toList();
+
+    return DefaultTabController(
+      length: widget.modules.length,
+      child: Column(
+        children: [
+          if (hasMultiple)
+            TabBar(tabs: tabs),
+          Expanded(child: TabBarView(children: pages)),
+        ],
+      ),
+    );
   }
 }
 

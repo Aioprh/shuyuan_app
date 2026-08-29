@@ -59,18 +59,21 @@ class ApiService {
       String user = '';
       String download = '';
       for (final s in card.querySelectorAll('span')) {
-        final cls = s.classes.join(' ');
         final txt = s.text.trim();
         if (txt.isEmpty) continue;
-        if (!cls.contains('layui-font-')) continue;
+        // 作者: <span class="...layui-font-red...">用户: xxx</span>
         if (txt.startsWith('用户')) {
-          user = txt.split(RegExp(r'[:：]')).skip(1).join('').trim();
+          final m = RegExp(r'[:：]\s*(.+)$').firstMatch(txt);
+          if (m != null) user = m.group(1)!.trim();
           continue;
         }
+        // 下载量: 下载:1234 或 下载: 1234
         if (txt.startsWith('下载')) {
-          download = txt.split(RegExp(r'[:：]')).skip(1).join('').trim();
+          final m = RegExp(r'[:：]\s*(.+)$').firstMatch(txt);
+          if (m != null) download = m.group(1)!.trim();
           continue;
         }
+        // 源数量: 合集类特有,作为标签展示
         tags.add(txt);
       }
 
