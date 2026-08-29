@@ -8,7 +8,7 @@ import '../services/publish_store.dart';
 import 'login_page.dart';
 
 /// 新建 / 发布:向站点提交 JSON 代码。
-/// App 板块 + 资源类型都在页面内选择,兼容 yuedu / qysg / yiciyuan / maofan / legadotauri。
+/// App 板块 + 资源类型都在页面内选择,兼容 yuedu / qysg / yiciyuan / legadotauri。
 /// 需登录站点帐号。
 class PublishPage extends StatefulWidget {
   const PublishPage({super.key});
@@ -159,7 +159,6 @@ class _PublishPageState extends State<PublishPage> {
               ButtonSegment(value: SrcApp.legadotauri, label: Text('Tauri')),
               ButtonSegment(value: SrcApp.qysg, label: Text('轻悦时光')),
               ButtonSegment(value: SrcApp.yiciyuan, label: Text('异次元')),
-              ButtonSegment(value: SrcApp.maofan, label: Text('猫番')),
             ],
             selected: {_app},
             onSelectionChanged: (s) => _setApp(s.first),

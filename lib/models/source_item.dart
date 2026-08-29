@@ -4,8 +4,7 @@ enum SrcApp {
   yuedu('yuedu', '开源阅读'),
   legadotauri('legadotauri', 'Legado-Tauri'),
   qysg('qysg', '轻悦时光'),
-  yiciyuan('yiciyuan', '异次元'),
-  maofan('maofan', '猫番阅读');
+  yiciyuan('yiciyuan', '异次元');
 
   final String path; // URL 路径段,如 /yuedu/
   final String label;
@@ -13,8 +12,11 @@ enum SrcApp {
 }
 
 /// 内容模块:书源 / 合集 / 图源 / TTS / 订阅源 等。
-/// 同一个 module 可以被多个 App 共享(如 shuyuan 在 4 个 App 下都有),
-/// 实际访问 URL 组合是 `${SrcApp.path}/${SrcModule.path}/...`。
+/// 同一个 module 可以被多个 App 共享。
+/// URL 拼接规则:
+///   - 默认 `${SrcApp.path}/${SrcModule.path}`;
+///   - 当 [apiPath] 非空时覆盖 App 前缀(如猫番漫画源挂在 /maofan/ 下,
+///     但作为子模块归入「开源阅读 / 漫画」)。完整前缀由 [ApiService.urlBase] 计算。
 enum SrcModule {
   shuyuan('shuyuan', '书源'),
   shuyuans('shuyuans', '书源合集'),
@@ -24,34 +26,31 @@ enum SrcModule {
   ttss('ttss', 'TTS 合集'),
   tuyuan('tuyuan', '图源'),
   tuyuans('tuyuans', '图源合集'),
-  yuan('yuan', '图源'),
-  yuans('yuans', '图源合集');
+  yuan('yuan', '漫画', apiPath: 'maofan'),
+  yuans('yuans', '漫画合集', apiPath: 'maofan');
 
   final String path;
   final String label;
-  const SrcModule(this.path, this.label);
 
-  /// 是否属于「源类」(单数) 还是 「合集类」(复数)
-  bool get isCollection =>
-      path.endsWith('s') || path == 'ttss' || path == 'yuans';
+  /// 覆盖 App 前缀的 API 路径段(如 'maofan'),为空则用 App.path
+  final String? apiPath;
+  const SrcModule(this.path, this.label, {this.apiPath});
 }
 
 /// 每个 App 下有哪些 源类 模块(底部 nav 的第一个 tab 内部 TabBar 切换)
 final Map<SrcApp, List<SrcModule>> kAppSources = {
-  SrcApp.yuedu:       [SrcModule.shuyuan, SrcModule.rss],
+  SrcApp.yuedu:       [SrcModule.shuyuan, SrcModule.rss, SrcModule.yuan],
   SrcApp.legadotauri: [SrcModule.shuyuan],
   SrcApp.qysg:        [SrcModule.shuyuan, SrcModule.tts],
   SrcApp.yiciyuan:    [SrcModule.tuyuan],
-  SrcApp.maofan:      [SrcModule.yuan],
 };
 
 /// 每个 App 下有哪些 合集类 模块(底部 nav 的第二个 tab 内部 TabBar 切换)
 final Map<SrcApp, List<SrcModule>> kAppCollections = {
-  SrcApp.yuedu:       [SrcModule.shuyuans, SrcModule.rsss],
+  SrcApp.yuedu:       [SrcModule.shuyuans, SrcModule.rsss, SrcModule.yuans],
   SrcApp.legadotauri: [SrcModule.shuyuans],
   SrcApp.qysg:        [SrcModule.shuyuans, SrcModule.ttss],
   SrcApp.yiciyuan:    [SrcModule.tuyuans],
-  SrcApp.maofan:      [SrcModule.yuans],
 };
 
 /// 每个 App 下所有可用模块(源类 + 合集类),用于发布页选择

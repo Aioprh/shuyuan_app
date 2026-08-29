@@ -27,10 +27,19 @@ class ApiService {
       'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36';
 
+  /// 计算 App+Module 的 URL 前缀。
+  /// 默认 `${app.path}/${module.path}`;当 module 声明了 apiPath(如猫番漫画)
+  /// 时用它覆盖 App 前缀。
+  static String urlBase(SrcApp app, SrcModule module) {
+    return module.apiPath != null
+        ? '${module.apiPath}/${module.path}'
+        : '${app.path}/${module.path}';
+  }
+
   /// 抓取某 App + 模块 的列表页。
   Future<List<SourceItem>> fetchPage(SrcApp app, SrcModule module, int page) async {
-    final uri = Uri.parse(
-        '$baseHost/${app.path}/${module.path}/index.html?page=$page');
+    final base = urlBase(app, module);
+    final uri = Uri.parse('$baseHost/$base/index.html?page=$page');
     final res = await httpGet(uri);
     if (res == null) return const [];
     return _parseList(app, module, res);
@@ -87,8 +96,8 @@ class ApiService {
         author: user,
         downloads: download,
         detailUrl:
-            '$baseHost/${app.path}/${module.path}/content/id/$realId.html',
-        jsonUrl: '$baseHost/${app.path}/${module.path}/json/id/$realId.json',
+            '$baseHost/${urlBase(app, module)}/content/id/$realId.html',
+        jsonUrl: '$baseHost/${urlBase(app, module)}/json/id/$realId.json',
       ));
     }
     return items;
@@ -130,7 +139,7 @@ class ApiService {
   /// 返回 (是否成功, 提示信息)。
   Future<(bool, String)> publish(SrcApp app, SrcModule module,
       {required String code, bool isManga = false, bool isAudio = false}) async {
-    final uri = Uri.parse('$baseHost/${app.path}/${module.path}/add.html');
+    final uri = Uri.parse('$baseHost/${urlBase(app, module)}/add.html');
     final body = <String, String>{
       'code': code,
       'content': '',
@@ -139,7 +148,7 @@ class ApiService {
     };
     final headers = <String, String>{
       'User-Agent': _ua,
-      'Referer': '$baseHost/${app.path}/${module.path}/add',
+      'Referer': '$baseHost/${urlBase(app, module)}/add',
       'Origin': baseHost,
       'X-Requested-With': 'XMLHttpRequest',
     };

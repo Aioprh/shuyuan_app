@@ -43,8 +43,6 @@ IconData iconFor(SrcApp app) {
       return Icons.wb_sunny;
     case SrcApp.yiciyuan:
       return Icons.extension;
-    case SrcApp.maofan:
-      return Icons.collections_bookmark;
   }
 }
 
