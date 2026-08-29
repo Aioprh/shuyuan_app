@@ -4,14 +4,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// 一条本地发布记录。
 class PublishRecord {
-  final String title; // 从源码中提取的名称(如 bookSourceName),取不到则用时间占位
-  final String moduleLabel; // 书源 / 订阅源 等
-  final String code; // 提交的完整 JSON 源码
+  final String title; // 从源码中提取的名称,取不到则用时间占位
+  final String appLabel; // App 板块名(如 开源阅读 / 轻悦时光)
+  final String moduleLabel; // 资源类型(如 书源 / TTS / 图源)
+  final String code; // 完整 JSON 源码
   final int createdAt; // 毫秒时间戳
-  final String? serverMsg; // 发布成功时的接口返回提示(若有)
+  final String? serverMsg; // 发布接口返回的提示(若有)
 
   PublishRecord({
     required this.title,
+    required this.appLabel,
     required this.moduleLabel,
     required this.code,
     required this.createdAt,
@@ -20,6 +22,7 @@ class PublishRecord {
 
   Map<String, dynamic> toJson() => {
         'title': title,
+        'appLabel': appLabel,
         'moduleLabel': moduleLabel,
         'code': code,
         'createdAt': createdAt,
@@ -28,6 +31,7 @@ class PublishRecord {
 
   factory PublishRecord.fromJson(Map<String, dynamic> json) => PublishRecord(
         title: json['title'] as String? ?? '',
+        appLabel: json['appLabel'] as String? ?? '',
         moduleLabel: json['moduleLabel'] as String? ?? '',
         code: json['code'] as String? ?? '',
         createdAt: (json['createdAt'] as num?)?.toInt() ?? 0,
@@ -44,7 +48,6 @@ class PublishStore {
   static const _kList = 'publish_history';
   List<PublishRecord> records = [];
 
-  /// 从本地存储恢复列表。
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();
     final raw = p.getString(_kList);
@@ -62,14 +65,12 @@ class PublishStore {
     }
   }
 
-  /// 新增一条到头部并持久化(内部自动 load,确保不覆盖旧数据)。
   Future<void> add(PublishRecord record) async {
     await load();
     records.insert(0, record);
     await _persist();
   }
 
-  /// 按时间戳删除某条并持久化。
   Future<void> removeAt(int createdAt) async {
     records.removeWhere((r) => r.createdAt == createdAt);
     await _persist();

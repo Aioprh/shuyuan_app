@@ -9,9 +9,15 @@ import 'detail_page.dart';
 /// 通用内容列表页:搜索 + 无限滚动 + 下拉刷新 + 详情跳转。
 /// [enableBatch] 为 true 时支持多选批量导出 JSON(书源列表)。
 class SourceListPage extends StatefulWidget {
+  final SrcApp app;
   final SrcModule module;
   final bool enableBatch;
-  const SourceListPage({super.key, required this.module, this.enableBatch = false});
+  const SourceListPage({
+    super.key,
+    this.app = SrcApp.yuedu,
+    required this.module,
+    this.enableBatch = false,
+  });
 
   @override
   State<SourceListPage> createState() => _SourceListPageState();
@@ -129,7 +135,7 @@ class _SourceListPageState extends State<SourceListPage> {
       _searchKw = _searchCtrl.text.trim();
       _searchedPages = 0;
     });
-    final list = await _api.fetchPage(widget.module, 1);
+    final list = await _api.fetchPage(widget.app, widget.module, 1);
     if (!mounted) return;
     setState(() {
       _loading = false;
@@ -149,7 +155,7 @@ class _SourceListPageState extends State<SourceListPage> {
     if (_loadingMore || !_hasMore || _loading) return;
     setState(() => _loadingMore = true);
     final next = _page + 1;
-    final list = await _api.fetchPage(widget.module, next);
+    final list = await _api.fetchPage(widget.app, widget.module, next);
     if (!mounted) return;
     setState(() {
       _loadingMore = false;
@@ -500,7 +506,8 @@ class _BatchExportPageState extends State<BatchExportPage> {
       _error = null;
     });
     try {
-      final json = await _api.fetchBatch(widget.ids);
+      final app = widget.items.first.app;
+      final json = await _api.fetchBatch(app, widget.ids);
       if (!mounted) return;
       setState(() {
         _json = json;
@@ -529,8 +536,9 @@ class _BatchExportPageState extends State<BatchExportPage> {
 
   /// 网络导入:复制批量导出的公开地址,供「阅读」网络导入。
   Future<void> _copyBatchUrl() async {
+    final appPath = widget.items.first.app.path;
     final url =
-        '${ApiService.baseHost}/yuedu/shuyuan/jsons?id=${widget.ids.join(',')}';
+        '${ApiService.baseHost}/$appPath/shuyuan/jsons?id=${widget.ids.join(',')}';
     await Clipboard.setData(ClipboardData(text: url));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

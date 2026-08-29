@@ -7,7 +7,9 @@ import '../services/api_service.dart';
 import '../services/publish_store.dart';
 import 'login_page.dart';
 
-/// 新建 / 发布:向站点提交书源 / 订阅源 JSON 代码(需登录站点帐号)。
+/// 新建 / 发布:向站点提交 JSON 代码。
+/// App 板块 + 资源类型都在页面内选择,兼容 yuedu / qysg / yiciyuan / maofan / legadotauri。
+/// 需登录站点帐号。
 class PublishPage extends StatefulWidget {
   const PublishPage({super.key});
 
@@ -18,6 +20,7 @@ class PublishPage extends StatefulWidget {
 class _PublishPageState extends State<PublishPage> {
   final _api = ApiService();
   final _codeCtrl = TextEditingController();
+  SrcApp _app = SrcApp.yuedu;
   SrcModule _module = SrcModule.shuyuan;
   bool _manga = false;
   bool _audio = false;
@@ -29,6 +32,24 @@ class _PublishPageState extends State<PublishPage> {
     super.dispose();
   }
 
+  /// 切换 App 时,自动把 module 重置为该 App 的第一个可用模块
+  void _setApp(SrcApp a) {
+    setState(() {
+      _app = a;
+      _module = kAppTabs[a]!.first;
+    });
+  }
+
+  /// 当前 App 下可用的资源模块(去重)
+  List<SrcModule> get _availableModules {
+    final seen = <SrcModule>{};
+    final list = <SrcModule>[];
+    for (final m in kAppTabs[_app]!) {
+      if (seen.add(m)) list.add(m);
+    }
+    return list;
+  }
+
   Future<void> _submit() async {
     final code = _codeCtrl.text.trim();
     if (code.isEmpty) {
@@ -37,14 +58,14 @@ class _PublishPageState extends State<PublishPage> {
     }
     setState(() => _submitting = true);
     final (ok, msg) = await _api
-        .publish(_module, code: code, isManga: _manga, isAudio: _audio);
+        .publish(_app, _module, code: code, isManga: _manga, isAudio: _audio);
     if (!mounted) return;
     setState(() => _submitting = false);
     _toast(msg.isEmpty ? '已提交' : msg);
     if (ok) {
-      // 成功:写入本地「我的发布」历史
       await PublishStore.instance.add(PublishRecord(
         title: _extractName(code),
+        appLabel: _app.label,
         moduleLabel: _module.label,
         code: code,
         createdAt: DateTime.now().millisecondsSinceEpoch,
@@ -55,23 +76,6 @@ class _PublishPageState extends State<PublishPage> {
     if (msg.contains('登录')) {
       _askLogin();
     }
-  }
-
-  /// 从书源/订阅源 JSON 中提取展示名(bookSourceName),取不到则返回时间占位。
-  String _extractName(String code) {
-    try {
-      final raw = code.trim().isEmpty ? null : jsonDecode(code);
-      if (raw is List && raw.isNotEmpty) {
-        final first = raw.first;
-        if (first is Map && first['bookSourceName'] != null) {
-          return first['bookSourceName'].toString();
-        }
-      } else if (raw is Map && raw['bookSourceName'] != null) {
-        return raw['bookSourceName'].toString();
-      }
-    } catch (_) {}
-    final t = DateTime.now();
-    return '${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   }
 
   void _askLogin() {
@@ -113,6 +117,24 @@ class _PublishPageState extends State<PublishPage> {
     );
   }
 
+  /// 从 JSON 中提取展示名(bookSourceName),取不到则返回时间占位。
+  String _extractName(String code) {
+    try {
+      final raw = code.trim().isEmpty ? null : jsonDecode(code);
+      if (raw is List && raw.isNotEmpty) {
+        final first = raw.first;
+        if (first is Map && first['bookSourceName'] != null) {
+          return first['bookSourceName'].toString();
+        }
+      } else if (raw is Map && raw['bookSourceName'] != null) {
+        return raw['bookSourceName'].toString();
+      }
+    } catch (_) {}
+    final t = DateTime.now();
+    return '${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} '
+        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -129,13 +151,29 @@ class _PublishPageState extends State<PublishPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const Text('App 板块', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          SegmentedButton<SrcApp>(
+            segments: const [
+              ButtonSegment(value: SrcApp.yuedu, label: Text('开源阅读')),
+              ButtonSegment(value: SrcApp.legadotauri, label: Text('Tauri')),
+              ButtonSegment(value: SrcApp.qysg, label: Text('轻悦时光')),
+              ButtonSegment(value: SrcApp.yiciyuan, label: Text('异次元')),
+              ButtonSegment(value: SrcApp.maofan, label: Text('猫番')),
+            ],
+            selected: {_app},
+            onSelectionChanged: (s) => _setApp(s.first),
+          ),
+          const SizedBox(height: 16),
           const Text('发布类型', style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           SegmentedButton<SrcModule>(
-            segments: const [
-              ButtonSegment(value: SrcModule.shuyuan, label: Text('书源'), icon: Icon(Icons.book_outlined)),
-              ButtonSegment(value: SrcModule.rss, label: Text('订阅源'), icon: Icon(Icons.rss_feed)),
-            ],
+            segments: _availableModules
+                .map((m) => ButtonSegment<SrcModule>(
+                      value: m,
+                      label: Text(m.label),
+                    ))
+                .toList(),
             selected: {_module},
             onSelectionChanged: (s) => setState(() => _module = s.first),
           ),
@@ -147,42 +185,42 @@ class _PublishPageState extends State<PublishPage> {
             controller: _codeCtrl,
             maxLines: 12,
             decoration: const InputDecoration(
-              hintText: '粘贴书源 / 订阅源 JSON 代码',
+              hintText: '粘贴 JSON 代码',
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 12,
+            runSpacing: 8,
             children: [
-              FilterChip(
-                label: const Text('漫画'),
-                selected: _manga,
-                onSelected: (v) => setState(() => _manga = v),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                value: _manga,
+                onChanged: (v) => setState(() => _manga = v == true),
+                title: const Text('标记为漫画', style: TextStyle(fontSize: 13)),
               ),
-              FilterChip(
-                label: const Text('有声'),
-                selected: _audio,
-                onSelected: (v) => setState(() => _audio = v),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                value: _audio,
+                onChanged: (v) => setState(() => _audio = v == true),
+                title: const Text('标记为有声', style: TextStyle(fontSize: 13)),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: _submitting ? null : _submit,
             icon: _submitting
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
-                : const Icon(Icons.upload),
-            label: Text(_submitting ? '提交中…' : '提交发布'),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '提示:发布前需先登录站点帐号。可先按右侧/下文按钮打开网页登录,或在提交后按提示登录。',
-            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                : const Icon(Icons.send),
+            label: Text(_submitting ? '提交中…' : '发布到 ${_app.label}'),
           ),
         ],
       ),

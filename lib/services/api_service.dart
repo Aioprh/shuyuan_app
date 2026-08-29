@@ -9,8 +9,10 @@ import '../models/source_item.dart';
 import 'session_store.dart';
 
 /// 数据访问层。数据来源:https://www.yckceo.com
-/// 各模块列表页采用相同的 `div.ylist` 卡片结构,逐页抓取;
-/// 单条内容取 /yuedu/{module}/json/id/{id}.json 。
+/// 站点按 App 板块分 URL 前缀,每个板块下又按模块分资源类型:
+///   ${baseHost}/${SrcApp.path}/${SrcModule.path}/...
+/// 各模块列表页采用相同的 `div.ylist` 卡片结构;
+/// 单条 JSON 取 /${app}/${module}/json/id/${id}.json 。
 class ApiService {
   static const String baseHost = 'https://www.yckceo.com';
   static const String loginUrl = '$baseHost/index/login/login.html';
@@ -25,16 +27,17 @@ class ApiService {
       'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36';
 
-  /// 抓取某模块列表页
-  Future<List<SourceItem>> fetchPage(SrcModule module, int page) async {
-    final uri = Uri.parse('$baseHost/yuedu/${module.path}/index.html?page=$page');
+  /// 抓取某 App + 模块 的列表页。
+  Future<List<SourceItem>> fetchPage(SrcApp app, SrcModule module, int page) async {
+    final uri = Uri.parse(
+        '$baseHost/${app.path}/${module.path}/index.html?page=$page');
     final res = await httpGet(uri);
     if (res == null) return const [];
-    return _parseList(module, res);
+    return _parseList(app, module, res);
   }
 
   /// 解析列表页 HTML(通用 ylist 卡片)
-  List<SourceItem> _parseList(SrcModule module, String html) {
+  List<SourceItem> _parseList(SrcApp app, SrcModule module, String html) {
     final doc = html_parser.parse(html);
     final cards = doc.querySelectorAll('div.ylist');
     final items = <SourceItem>[];
@@ -52,7 +55,6 @@ class ApiService {
       final title = _text(link).trim();
       final time = _text(card.querySelector('p.m-right')).trim();
 
-      // 收集所有 layui-font-* 徽标文本,统一作为 tags
       final tags = <String>[];
       String user = '';
       String download = '';
@@ -73,6 +75,7 @@ class ApiService {
       }
 
       items.add(SourceItem(
+        app: app,
         module: module,
         id: realId,
         title: title,
@@ -80,14 +83,15 @@ class ApiService {
         tags: tags,
         author: user,
         downloads: download,
-        detailUrl: '$baseHost/yuedu/${module.path}/content/id/$realId.html',
-        jsonUrl: '$baseHost/yuedu/${module.path}/json/id/$realId.json',
+        detailUrl:
+            '$baseHost/${app.path}/${module.path}/content/id/$realId.html',
+        jsonUrl: '$baseHost/${app.path}/${module.path}/json/id/$realId.json',
       ));
     }
     return items;
   }
 
-  /// 抓取单条内容 JSON 原文(书源 / 合集 / 订阅源通用),并做格式化。
+  /// 抓取单条内容 JSON 原文,并做格式化。
   Future<String> fetchJson(SourceItem item) async {
     final uri = Uri.parse(item.jsonUrl);
     final res = await httpGet(uri);
@@ -99,13 +103,14 @@ class ApiService {
       const encoder = JsonEncoder.withIndent('  ');
       return encoder.convert(jsonDecode(trimmed));
     }
-    throw Exception('返回内容异常');
+    throw Exception('返回内容异常(可能需要登录后查看)');
   }
 
-  /// 批量导出书源 JSON(书源列表多选),接口: /yuedu/shuyuan/jsons?id=a,b,c
-  Future<String> fetchBatch(List<String> ids) async {
+  /// 批量导出 JSON(仅书源模块支持),接口: /yuedu/shuyuan/jsons?id=a,b,c
+  Future<String> fetchBatch(SrcApp app, List<String> ids) async {
     if (ids.isEmpty) throw Exception('未选择条目');
-    final uri = Uri.parse('$baseHost/yuedu/shuyuan/jsons?id=${ids.join(',')}');
+    final uri = Uri.parse(
+        '$baseHost/${app.path}/shuyuan/jsons?id=${ids.join(',')}');
     final res = await httpGet(uri);
     if (res == null) throw Exception('批量导出失败,请检查网络');
     final trimmed = res.trim();
@@ -117,13 +122,12 @@ class ApiService {
     return encoder.convert(decoded);
   }
 
-  /// 发布/新建:向 /yuedu/{module}/add.html 提交 JSON 代码(与站点 JS 一致)。
+  /// 发布/新建:向 /{app}/{module}/add.html 提交 JSON 代码。
   /// 需已登录站点帐号,否则服务器返回的是登录页 HTML,此处统一转为登录提示。
   /// 返回 (是否成功, 提示信息)。
-  Future<(bool, String)> publish(SrcModule module,
+  Future<(bool, String)> publish(SrcApp app, SrcModule module,
       {required String code, bool isManga = false, bool isAudio = false}) async {
-    // 站点接口要求 POST 到 .html 并带 AJAX 请求头
-    final uri = Uri.parse('$baseHost/yuedu/${module.path}/add.html');
+    final uri = Uri.parse('$baseHost/${app.path}/${module.path}/add.html');
     final body = <String, String>{
       'code': code,
       'content': '',
@@ -132,7 +136,7 @@ class ApiService {
     };
     final headers = <String, String>{
       'User-Agent': _ua,
-      'Referer': '$baseHost/yuedu/${module.path}/add',
+      'Referer': '$baseHost/${app.path}/${module.path}/add',
       'Origin': baseHost,
       'X-Requested-With': 'XMLHttpRequest',
     };
@@ -145,7 +149,6 @@ class ApiService {
           .post(uri, headers: headers, body: body)
           .timeout(_timeout);
       final t = utf8.decode(res.bodyBytes).trim();
-      // 正常后台返回 JSON:{code, msg, url?};未登录时返回的是整页 HTML
       if (t.startsWith('{') || t.startsWith('[')) {
         final obj = jsonDecode(t);
         if (obj is Map) {
@@ -155,7 +158,6 @@ class ApiService {
         }
         return (false, t);
       }
-      // 非 JSON = 未登录被重定向回页面,归一到登录提示
       return (false, '需要登录站点帐号');
     } catch (e) {
       return (false, '提交失败:$e');
