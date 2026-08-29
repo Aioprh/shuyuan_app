@@ -5,7 +5,7 @@ enum SrcApp {
   legadotauri('legadotauri', 'Legado-Tauri'),
   qysg('qysg', '轻悦时光'),
   yiciyuan('yiciyuan', '异次元'),
-  maofan('maofan', '猫番阅读');
+  maofan('maofan', '益达图源');
 
   final String path; // URL 路径段,如 /yuedu/
   final String label;
