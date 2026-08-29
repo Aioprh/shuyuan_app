@@ -1,0 +1,108 @@
+name: 云端构建 APK
+
+# 触发方式:
+#   - push 到 main / 打 v* 标签时自动构建
+#   - 也可在 Actions 页面手动触发,按需选择产物
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      build_mode:
+        description: 构建模式(release 生产 / debug 调试)
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - debug
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # 允许在发 tag 时上传 Release 产物
+
+jobs:
+  build:
+    name: Flutter 构建 APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: 安装 Flutter(3.47.2 stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.2'
+          cache: true
+
+      - name: 检查 Flutter 环境
+        run: flutter --version && dart --version
+
+      - name: 拉取依赖
+        run: flutter pub get
+
+      - name: 静态分析
+        run: flutter analyze
+
+      - name: 运行测试
+        run: flutter test
+
+      - name: 构建 APK
+        id: build
+        run: |
+          mode="${BUILD_MODE:-release}"
+          if [ "$mode" = "debug" ]; then
+            flutter build apk --debug
+            apk=build/app/outputs/flutter-apk/app-debug.apk
+          else
+            # 当前 Gradle 配置用 debug 密钥签名 release 包,可直接安装;
+            # 如需正式签名,请在 KEYSTORE_* 环境变量中配置密钥后改用 release 签名。
+            flutter build apk --release
+            apk=build/app/outputs/flutter-apk/app-release.apk
+          fi
+          mkdir -p dist
+          cp "$apk" dist/shuyuan-app.apk
+          echo "apk-path=dist/shuyuan-app.apk" >> "$GITHUB_OUTPUT"
+        env:
+          BUILD_MODE: ${{ github.event.inputs.build_mode || 'release' }}
+
+      - name: 计算 APK 版本信息
+        id: meta
+        run: |
+          version=$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: shuyuan-app-${{ steps.meta.outputs.version }}
+          path: ${{ steps.build.outputs.apk-path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: 发布到 GitHub Release(仅打 tag 时)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 书源仓库 v${{ github.ref_name }}
+          body: |
+            ## 书源仓库 ${{ github.ref_name }}
+
+            - Flutter 3.47.2 / Dart 3.13(stable)云端自动构建
+            - APK 已签名(默认 debug 密钥),可直接安装
+            - 安装后在「阅读」App 中粘贴导入书源 JSON 即可使用
+          files: ${{ steps.build.outputs.apk-path }}
+          fail_on_unmatched_files: true

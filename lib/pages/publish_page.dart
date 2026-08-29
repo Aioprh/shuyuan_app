@@ -1,0 +1,191 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+
+import '../models/source_item.dart';
+import '../services/api_service.dart';
+import '../services/publish_store.dart';
+import 'login_page.dart';
+
+/// 新建 / 发布:向站点提交书源 / 订阅源 JSON 代码(需登录站点帐号)。
+class PublishPage extends StatefulWidget {
+  const PublishPage({super.key});
+
+  @override
+  State<PublishPage> createState() => _PublishPageState();
+}
+
+class _PublishPageState extends State<PublishPage> {
+  final _api = ApiService();
+  final _codeCtrl = TextEditingController();
+  SrcModule _module = SrcModule.shuyuan;
+  bool _manga = false;
+  bool _audio = false;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _codeCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final code = _codeCtrl.text.trim();
+    if (code.isEmpty) {
+      _toast('请输入 JSON 源代码');
+      return;
+    }
+    setState(() => _submitting = true);
+    final (ok, msg) = await _api
+        .publish(_module, code: code, isManga: _manga, isAudio: _audio);
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    _toast(msg.isEmpty ? '已提交' : msg);
+    if (ok) {
+      // 成功:写入本地「我的发布」历史
+      await PublishStore.instance.add(PublishRecord(
+        title: _extractName(code),
+        moduleLabel: _module.label,
+        code: code,
+        createdAt: DateTime.now().millisecondsSinceEpoch,
+        serverMsg: msg,
+      ));
+      return;
+    }
+    if (msg.contains('登录')) {
+      _askLogin();
+    }
+  }
+
+  /// 从书源/订阅源 JSON 中提取展示名(bookSourceName),取不到则返回时间占位。
+  String _extractName(String code) {
+    try {
+      final raw = code.trim().isEmpty ? null : jsonDecode(code);
+      if (raw is List && raw.isNotEmpty) {
+        final first = raw.first;
+        if (first is Map && first['bookSourceName'] != null) {
+          return first['bookSourceName'].toString();
+        }
+      } else if (raw is Map && raw['bookSourceName'] != null) {
+        return raw['bookSourceName'].toString();
+      }
+    } catch (_) {}
+    final t = DateTime.now();
+    return '${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _askLogin() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('需要登录'),
+        content: const Text('发布内容需要登录站点帐号。是否在应用内登录?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _openLogin();
+            },
+            child: const Text('去登录'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openLogin() async {
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+    );
+    if (ok == true && mounted) {
+      _toast('登录成功,请重新提交');
+    }
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('新建 / 发布'),
+        actions: [
+          IconButton(
+            tooltip: '登录',
+            onPressed: _openLogin,
+            icon: const Icon(Icons.login),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text('发布类型', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          SegmentedButton<SrcModule>(
+            segments: const [
+              ButtonSegment(value: SrcModule.shuyuan, label: Text('书源'), icon: Icon(Icons.book_outlined)),
+              ButtonSegment(value: SrcModule.rss, label: Text('订阅源'), icon: Icon(Icons.rss_feed)),
+            ],
+            selected: {_module},
+            onSelectionChanged: (s) => setState(() => _module = s.first),
+          ),
+          const SizedBox(height: 16),
+          const Text('JSON 源代码(必填)',
+              style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _codeCtrl,
+            maxLines: 12,
+            decoration: const InputDecoration(
+              hintText: '粘贴书源 / 订阅源 JSON 代码',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            children: [
+              FilterChip(
+                label: const Text('漫画'),
+                selected: _manga,
+                onSelected: (v) => setState(() => _manga = v),
+              ),
+              FilterChip(
+                label: const Text('有声'),
+                selected: _audio,
+                onSelected: (v) => setState(() => _audio = v),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed: _submitting ? null : _submit,
+            icon: _submitting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.upload),
+            label: Text(_submitting ? '提交中…' : '提交发布'),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '提示:发布前需先登录站点帐号。可先按右侧/下文按钮打开网页登录,或在提交后按提示登录。',
+            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
